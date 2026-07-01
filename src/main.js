@@ -48,7 +48,8 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 function loadState() {
   try {
     return normalizeState(JSON.parse(localStorage.getItem(storageKey)));
-  } catch {
+  } catch (error) {
+    console.warn('Saved state could not be loaded. Using initial state.', error);
     return clone(seedState);
   }
 }
