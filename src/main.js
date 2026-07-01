@@ -43,13 +43,36 @@ const seedState = {
 
 let state = loadState();
 const $ = (id) => document.getElementById(id);
+const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(storageKey)) || seedState;
+    return normalizeState(JSON.parse(localStorage.getItem(storageKey)));
   } catch {
-    return seedState;
+    return clone(seedState);
   }
+}
+
+function normalizeState(savedState) {
+  if (!savedState || !Array.isArray(savedState.habits)) return clone(seedState);
+  const allowedScreens = ['onboarding', 'home', 'restart', 'report', 'insights'];
+  return {
+    ...clone(seedState),
+    ...savedState,
+    screen: allowedScreens.includes(savedState.screen) ? savedState.screen : 'onboarding',
+    draftReasons: Array.isArray(savedState.draftReasons) ? savedState.draftReasons : seedState.draftReasons,
+    checkReasons: Array.isArray(savedState.checkReasons) ? savedState.checkReasons : seedState.checkReasons,
+    habits: savedState.habits.map((habit, index) => ({
+      ...seedState.habits[index % seedState.habits.length],
+      ...habit,
+      records: Array.isArray(habit.records) ? habit.records.map(normalizeRecord) : [],
+    })),
+  };
+}
+
+function normalizeRecord(record) {
+  if (record && typeof record === 'object') return record;
+  return { label: String(record || '記録'), type: 'tiny', date: todayIso() };
 }
 
 function saveState() {
@@ -111,11 +134,11 @@ function addHabitFromForm(source) {
     id: Date.now(),
     name: $(`${prefix}Name`).value || '新しい習慣',
     category: $(`${prefix}Category`).value,
-    normalGoal: $(`${prefix}Normal`)?.value || '10分だけ進める',
-    busyGoal: $(`${prefix}Busy`)?.value || '3分だけ触れる',
-    tinyGoal: $(`${prefix}Tiny`)?.value || '30秒だけ開く',
+    normalGoal: ($(`${prefix}Normal`) && $(`${prefix}Normal`).value) || '10分だけ進める',
+    busyGoal: ($(`${prefix}Busy`) && $(`${prefix}Busy`).value) || '3分だけ触れる',
+    tinyGoal: ($(`${prefix}Tiny`) && $(`${prefix}Tiny`).value) || '30秒だけ開く',
     purpose: $(`${prefix}Purpose`).value || '続けたい理由を忘れないため',
-    reminder: $(`${prefix}Reminder`)?.value || '21:00',
+    reminder: ($(`${prefix}Reminder`) && $(`${prefix}Reminder`).value) || '21:00',
     lastRecordOffset: 0,
     restarts: 0,
     records: [],
@@ -271,7 +294,7 @@ function calendarDots() {
   const records = activeHabit().records.slice(0, 21);
   return `<div class="calendar-dots">${Array.from({ length: 21 }, (_, index) => {
     const record = records[index];
-    return `<span class="${record?.type || ''}" title="${record?.label || '記録なし'}"></span>`;
+    return `<span class="${record ? record.type : ''}" title="${record ? record.label : '記録なし'}"></span>`;
   }).join('')}</div>`;
 }
 
@@ -302,7 +325,14 @@ function insights() {
 
 function render() {
   const views = { onboarding, home, restart, report, insights };
-  $('app').innerHTML = views[state.screen]();
+  const view = views[state.screen] || onboarding;
+  try {
+    $('app').innerHTML = view();
+  } catch (error) {
+    console.error(error);
+    localStorage.removeItem(storageKey);
+    $('app').innerHTML = `<main class="boot-fallback"><h1>三日bozeを読み込めませんでした</h1><p>保存済みデータまたは古いキャッシュが原因の可能性があります。下のボタンで初期状態に戻して再読み込みできます。</p><button onclick="location.reload()">再読み込みする</button></main>`;
+  }
 }
 
 window.state = state;
